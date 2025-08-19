@@ -11,7 +11,7 @@ def on_build(config: powermake.Config):
 
     objects = powermake.compile_files(config, files)
 
-    config.add_shared_libs("turbojpeg", "jpeg")
+    config.add_shared_libs("turbojpeg")
 
     powermake.link_files(config, objects)
 

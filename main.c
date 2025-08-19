@@ -29,10 +29,11 @@ unsigned char* load_file(const char* filename, unsigned long* size)
 }
 
 // Save raw RGB buffer as JPEG
-int save_jpeg(const char* filename, unsigned char* buffer, int width, int height, int jpegQual)
+int save_jpeg(const char* filename, unsigned char* buffer, int width, int height, int quality)
 {
-    struct jpeg_compress_struct cinfo;
-    struct jpeg_error_mgr jerr;
+    tjhandle handle        = NULL;
+    unsigned char* jpegBuf = NULL;
+    unsigned long jpegSize = 0;
 
     FILE* outfile = fopen(filename, "wb");
     if(!outfile)
@@ -41,32 +42,42 @@ int save_jpeg(const char* filename, unsigned char* buffer, int width, int height
         return -1;
     }
 
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_compress(&cinfo);
-    jpeg_stdio_dest(&cinfo, outfile);
-
-    cinfo.image_width      = width;
-    cinfo.image_height     = height;
-    cinfo.input_components = 3;  // RGB
-    cinfo.in_color_space   = JCS_RGB;
-
-    jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, jpegQual, TRUE);
-
-    jpeg_start_compress(&cinfo, TRUE);
-
-    JSAMPROW row_pointer[1];
-    int row_stride = width * 3;
-
-    while(cinfo.next_scanline < cinfo.image_height)
+    handle = tjInitCompress();
+    if(!handle)
     {
-        row_pointer[0] = &buffer[cinfo.next_scanline * row_stride];
-        jpeg_write_scanlines(&cinfo, row_pointer, 1);
+        fprintf(stderr, "tjInitCompress error: %s\n", tjGetErrorStr());
+        fclose(outfile);
+        return -1;
     }
 
-    jpeg_finish_compress(&cinfo);
-    jpeg_destroy_compress(&cinfo);
+    // Compress raw RGB into JPEG buffer
+    if(tjCompress2(
+           handle,
+           buffer,
+           width,
+           0,
+           height,
+           TJPF_RGB,
+           &jpegBuf,
+           &jpegSize,
+           TJSAMP_444,  // full chroma (or TJSAMP_420 for smaller size)
+           quality,
+           TJFLAG_FASTDCT
+       )
+       != 0)
+    {
+        fprintf(stderr, "tjCompress2 error: %s\n", tjGetErrorStr());
+        tjDestroy(handle);
+        fclose(outfile);
+        return -1;
+    }
+
+    // Write JPEG buffer to file
+    fwrite(jpegBuf, jpegSize, 1, outfile);
     fclose(outfile);
+
+    tjFree(jpegBuf);  // free buffer allocated by TurboJPEG
+    tjDestroy(handle);
 
     return 0;
 }
